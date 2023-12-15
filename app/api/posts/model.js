@@ -21,6 +21,12 @@ const PostSchema = new mongoose.Schema(
       type: String,
       default: "",
     }
+    ,
+    author_id : {
+      type: mongoose.Types.ObjectId,
+      ref: "User",
+      required: [true, "Post must have the Author Id"]
+    }
   },
   {
     timestamps: true,

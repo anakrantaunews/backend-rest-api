@@ -13,7 +13,9 @@ const getAllPosts = async (req, res, next) => {
       condition = { ...condition, name: { $regex: keyword, $options: "i" } };
     }
 
-    const allPosts = await Post.find(condition).sort({createdAt : -1});
+    const allPosts = await Post.find(condition)
+    .populate({path : "author_id"})
+    .sort({createdAt : -1});
 
     return res.status(StatusCodes.OK).json({
       message: "Success",
@@ -24,10 +26,33 @@ const getAllPosts = async (req, res, next) => {
   }
 };
 
+
+const getAllPostsByUser = async (req, res, next) => {
+  try {
+    const { keyword } = req.query;
+    let condition = {};
+    if (keyword) {
+      condition = { ...condition, name: { $regex: keyword, $options: "i" }};
+    }
+
+    const allPosts = await Post.find({...condition, author_id : req.user.userId})
+    .populate({path : "author_id"})
+    .sort({createdAt : -1});
+
+    return res.status(StatusCodes.OK).json({
+      message: "Success",
+      data: allPosts,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 const getOnePost = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const post = await Post.findOne({ _id: id });
+    const post = await Post.findOne({ _id: id }).populate({path : "author_id"});
     if (!post) {
       throw new CustomAPI.NotFoundError("post not found");
     }
@@ -59,6 +84,7 @@ const createPost = async (req, res, next) => {
       description,
       thumbnailUrl,
       thumbnail,
+      author_id : req.user.userId
     });
 
     await result.save();
@@ -80,6 +106,44 @@ const updatePost = async (req, res, next) => {
 
     const result = await Post.findOne({ _id: id });
 
+    if (!result) {
+      throw new CustomAPI.NotFoundError("Not Found Post");
+    }
+
+    if (!req.files) {
+      result.name = name;
+      result.description = description;
+    } else {
+      
+      const checkThumbnail = req.files["thumbnail"] ? true : false;
+
+      if (checkThumbnail) {
+        await cloudinary.uploader.destroy(result.thumbnail);
+        result.thumbnail = req.files["thumbnail"][0].filename;
+        result.thumbnailUrl = req.files["thumbnail"][0].path;
+      }
+      
+      result.name = name;
+      result.description = description;
+      
+      await result.save();
+      return res.status(StatusCodes.OK).json({
+        message: "Success Updated The Post",
+        data: result,
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updatePostByUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, description } =
+      req.body;
+
+    const result = await Post.findOne({ _id: id, author_id : req.user.userId });
     if (!result) {
       throw new CustomAPI.NotFoundError("Not Found Post");
     }
@@ -138,10 +202,39 @@ const deletePost = async (req, res, next) => {
   }
 };
 
+const deletePostByUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const result = await Post.findOne({ _id: id, author_id : req.user.userId});
+
+    if (!result) {
+      throw new CustomAPI.NotFoundError("Not Found Post");
+    }
+
+    
+    const checkThumbnail = result.thumbnail ? true : false;
+
+    if (checkThumbnail) {
+      await cloudinary.uploader.destroy(result.thumbnail);
+    }
+    
+    await Post.deleteOne({ _id: id });
+    return res.status(StatusCodes.OK).json({
+      message: "Success Deleted Post",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 module.exports = {
   getAllPosts,
   createPost,
   getOnePost,
   updatePost,
-  deletePost
+  deletePost,
+  updatePostByUser,
+  deletePostByUser,
+  getAllPostsByUser
 };
